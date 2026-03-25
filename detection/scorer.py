@@ -16,15 +16,15 @@ from db.patterns import get_patterns_for_group
 
 logger = logging.getLogger(__name__)
 
-# Unicode ranges covering most emoji
+# Unicode ranges covering most emoji — kept as alternation (not one big
+# character class) to avoid overlapping-range warnings in static analysis.
 _EMOJI_RE = re.compile(
-    "[\U0001F300-\U0001F9FF"   # Misc symbols, emoticons, transport, etc.
-    "\U00002600-\U000027BF"    # Misc symbols (sun, stars, etc.)
-    "\U0001FA00-\U0001FA6F"    # Chess, symbols
-    "\U0001FA70-\U0001FAFF"    # Symbols and pictographs extended-A
-    "\U00002702-\U000027B0"    # Dingbats
-    "\U000024C2-\U0001F251"    # Enclosed chars + transport
-    "]",
+    r"[\U0001F300-\U0001F9FF]"  # Misc symbols, emoticons, transport
+    r"|[\U0001FA00-\U0001FA6F]"  # Chess pieces, symbols
+    r"|[\U0001FA70-\U0001FAFF]"  # Symbols and pictographs extended-A
+    r"|[\u2600-\u27BF]"          # Misc symbols + dingbats (sun, stars, etc.)
+    r"|[\u2702-\u27B0]"          # Dingbats subset
+    r"|[\u24C2-\u2BFF]",         # Enclosed chars + transport + misc technical
     re.UNICODE,
 )
 
