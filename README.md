@@ -1,4 +1,4 @@
-# Anti-Spam Bot — Python Edition
+# Silencer — Anti-Spam Bot
 
 Multi-tenant Telegram anti-spam bot. Each group gets its own admin team, custom patterns, muted list, and spam log. Built with `python-telegram-bot` v21 + `aiosqlite`.
 
