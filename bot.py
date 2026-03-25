@@ -14,8 +14,8 @@ from db.connection import get_db, close_db
 from db.migrations import run_migrations
 from db.pending_state import cleanup_old
 from detection.rules import seed_builtin_rules
-from handlers.membership import register as register_membership
-from handlers.messages import register as register_messages
+from handlers.membership import register_membership_handler
+from handlers.messages import register_message_handler
 from handlers.admin import register_admin_handlers
 
 logging.basicConfig(
@@ -52,12 +52,15 @@ def main() -> None:
     )
 
     # Register handlers — order matters
-    register_membership(app)   # my_chat_member: group register/remove
-    register_messages(app)     # group spam detection + auto-register
+    register_membership_handler(app)   # my_chat_member: group register/remove
+    register_message_handler(app)     # group spam detection + auto-register
     register_admin_handlers(app)  # DM panel: /start + all callbacks + pending flows
 
     logger.info("Bot starting (multi-tenant Python edition)...")
-    app.run_polling(drop_pending_updates=True)
+    app.run_polling(
+        drop_pending_updates=True,
+        allowed_updates=["message", "callback_query", "my_chat_member"],
+    )
 
 
 if __name__ == "__main__":

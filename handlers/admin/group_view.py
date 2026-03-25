@@ -40,6 +40,16 @@ async def group_view_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     title = group["title"] if group else str(chat_id)
 
+    # Check if the bot itself has admin rights in the group
+    bot_is_admin = False
+    try:
+        bot_member = await context.bot.get_chat_member(chat_id, context.bot.id)
+        bot_is_admin = bot_member.status in ("administrator", "creator")
+    except Exception:
+        pass
+
+    warning = "" if bot_is_admin else "\n\n⚠️ *Bot is not an admin* — promote it to enable spam deletion and muting."
+
     buttons = [
         [InlineKeyboardButton(f"🔇 Muted users ({muted_count})", callback_data=f"muted:{chat_id}")],
         [InlineKeyboardButton(f"📋 Spam log ({spam_count})", callback_data=f"spamlog:{chat_id}")],
@@ -54,6 +64,7 @@ async def group_view_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         f"🔇 Muted: {muted_count}  "
         f"🗂 Spam caught: {spam_count}  "
         f"🧩 Custom patterns: {pattern_count}"
+        f"{warning}"
     )
 
     try:
