@@ -1,0 +1,2 @@
+python-telegram-bot==21.6
+aiosqlite==0.20.0
