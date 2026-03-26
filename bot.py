@@ -5,7 +5,17 @@ Entry point: initialises DB, seeds rules, registers handlers, starts polling.
 """
 
 import asyncio
+import fcntl
 import logging
+import sys
+
+# ─── Single-instance lock ─────────────────────────────────────
+_lock_fd = open("/tmp/silencer-bot.lock", "w")
+try:
+    fcntl.flock(_lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+except BlockingIOError:
+    print("ERROR: Another silencer-bot instance is already running.", file=sys.stderr)
+    sys.exit(1)
 
 from telegram.ext import Application
 
