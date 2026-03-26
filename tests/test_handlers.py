@@ -7,9 +7,10 @@ Telegram objects (Update, Message, Chat, User, Bot) are mocked.
 
 import pytest
 import pytest_asyncio
+from datetime import datetime, timezone, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch, call
 
-from handlers.messages import on_group_message, _display_name
+from handlers.messages import on_group_message, _display_name, PROBATION_SECONDS
 from handlers.membership import on_my_chat_member
 from db.muted import get_muted, count_muted
 from db.spam_log import get_spam_log, count_spam
@@ -60,10 +61,19 @@ def _update(message=None, chat=None, user=None):
     return upd
 
 
-def _context(is_admin=False):
+def _context(is_admin=False, joined_at=None):
+    """
+    Create a mock context.
+    
+    Args:
+        is_admin: Whether the user is a Telegram admin.
+        joined_at: datetime when user joined. None = no date available.
+                   Use datetime.now(timezone.utc) - timedelta(...) for relative times.
+    """
     ctx = MagicMock()
     member = MagicMock()
     member.status = "administrator" if is_admin else "member"
+    member.date = joined_at
     ctx.bot = MagicMock()
     ctx.bot.get_chat_member = AsyncMock(return_value=member)
     ctx.bot.restrict_chat_member = AsyncMock()
@@ -230,10 +240,11 @@ async def test_command_message_ignored(db):
 
 @pytest.mark.asyncio
 async def test_low_score_message_not_actioned(db):
-    """Score of 1 should not trigger delete/mute."""
+    """Score of 1 should not trigger delete/mute for established members."""
     msg = _message(text="airdrop happening soon somewhere check it out please!")
     upd = _update(message=msg)
-    ctx = _context()
+    # Established member (joined 7 days ago)
+    ctx = _context(joined_at=datetime.now(timezone.utc) - timedelta(days=7))
 
     with patch("handlers.messages.score_message", return_value=(1, ["crypto scam"])), \
          patch("handlers.messages.get_group", return_value={"chat_id": CHAT_ID}):
@@ -255,6 +266,120 @@ async def test_no_user_message_ignored(db):
         await on_group_message(upd, _context())
 
     mock_score.assert_not_called()
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# PROBATION — NEW MEMBER DETECTION
+# ══════════════════════════════════════════════════════════════════════════════
+
+@pytest.mark.asyncio
+async def test_new_member_score_1_triggers_spam(db):
+    """Score of 1 should trigger spam for members who joined <24h ago."""
+    msg = _message(text="airdrop happening soon somewhere check it out please!")
+    upd = _update(message=msg)
+    # New member (joined 1 hour ago)
+    ctx = _context(joined_at=datetime.now(timezone.utc) - timedelta(hours=1))
+
+    with patch("handlers.messages.score_message", return_value=(1, ["crypto scam"])), \
+         patch("handlers.messages.get_group", return_value={"chat_id": CHAT_ID}), \
+         patch("handlers.messages.log_spam", AsyncMock()), \
+         patch("handlers.messages.add_muted", AsyncMock()):
+        await on_group_message(upd, ctx)
+
+    msg.delete.assert_called_once()
+    ctx.bot.restrict_chat_member.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_established_member_score_1_no_action(db):
+    """Score of 1 should NOT trigger spam for members who joined >24h ago."""
+    msg = _message(text="airdrop happening soon somewhere check it out please!")
+    upd = _update(message=msg)
+    # Established member (joined 3 days ago)
+    ctx = _context(joined_at=datetime.now(timezone.utc) - timedelta(days=3))
+
+    with patch("handlers.messages.score_message", return_value=(1, ["crypto scam"])), \
+         patch("handlers.messages.get_group", return_value={"chat_id": CHAT_ID}):
+        await on_group_message(upd, ctx)
+
+    msg.delete.assert_not_called()
+    ctx.bot.restrict_chat_member.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_established_member_score_2_triggers_spam(db):
+    """Score of 2 should trigger spam for established members (normal threshold)."""
+    msg = _message(text="earn $500 per day from home with crypto signals!")
+    upd = _update(message=msg)
+    ctx = _context(joined_at=datetime.now(timezone.utc) - timedelta(days=30))
+
+    with patch("handlers.messages.score_message", return_value=(2, ["investment scam", "long message"])), \
+         patch("handlers.messages.get_group", return_value={"chat_id": CHAT_ID}), \
+         patch("handlers.messages.log_spam", AsyncMock()), \
+         patch("handlers.messages.add_muted", AsyncMock()):
+        await on_group_message(upd, ctx)
+
+    msg.delete.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_no_join_date_treated_as_established(db):
+    """If ChatMember.date is None, treat as established (threshold=2)."""
+    msg = _message(text="airdrop happening soon somewhere check it out please!")
+    upd = _update(message=msg)
+    # No join date available
+    ctx = _context(joined_at=None)
+
+    with patch("handlers.messages.score_message", return_value=(1, ["crypto scam"])), \
+         patch("handlers.messages.get_group", return_value={"chat_id": CHAT_ID}):
+        await on_group_message(upd, ctx)
+
+    msg.delete.assert_not_called()
+    ctx.bot.restrict_chat_member.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_member_exactly_at_probation_boundary(db):
+    """Member who joined exactly 24h ago should no longer be on probation."""
+    msg = _message(text="airdrop happening soon somewhere check it out please!")
+    upd = _update(message=msg)
+    ctx = _context(joined_at=datetime.now(timezone.utc) - timedelta(seconds=PROBATION_SECONDS))
+
+    with patch("handlers.messages.score_message", return_value=(1, ["crypto scam"])), \
+         patch("handlers.messages.get_group", return_value={"chat_id": CHAT_ID}):
+        await on_group_message(upd, ctx)
+
+    msg.delete.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_get_chat_member_failure_treated_as_established(db):
+    """If get_chat_member fails, treat user as established (safe fallback)."""
+    msg = _message(text="airdrop happening soon somewhere check it out please!")
+    upd = _update(message=msg)
+    ctx = _context()
+    ctx.bot.get_chat_member = AsyncMock(return_value=None)
+
+    with patch("handlers.messages.score_message", return_value=(1, ["crypto scam"])), \
+         patch("handlers.messages.get_group", return_value={"chat_id": CHAT_ID}):
+        await on_group_message(upd, ctx)
+
+    msg.delete.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_new_member_clean_message_not_actioned(db):
+    """New member with score 0 should not be actioned (probation doesn't penalize clean messages)."""
+    msg = _message(text="hello everyone nice to be here in this group today!")
+    upd = _update(message=msg)
+    ctx = _context(joined_at=datetime.now(timezone.utc) - timedelta(minutes=5))
+
+    with patch("handlers.messages.score_message", return_value=(0, [])), \
+         patch("handlers.messages.get_group", return_value={"chat_id": CHAT_ID}):
+        await on_group_message(upd, ctx)
+
+    msg.delete.assert_not_called()
+    ctx.bot.restrict_chat_member.assert_not_called()
 
 
 @pytest.mark.asyncio

@@ -6,11 +6,14 @@ Rules:
   - Skip commands (/ prefix)
   - Skip Telegram admins/creators
   - Score the message
-  - If score >= 2: delete, restrict, record, reply
+  - Probation: new members (<24h) have stricter threshold
+  - If score >= threshold: delete, restrict, record, reply
   - Auto-register unknown groups on first message
 """
 
 import logging
+from datetime import datetime, timezone
+
 from telegram import Update, ChatPermissions
 from telegram.ext import ContextTypes, MessageHandler, filters
 
@@ -20,6 +23,11 @@ from db.spam_log import log_spam
 from detection.scorer import score_message
 
 logger = logging.getLogger(__name__)
+
+# ─── Probation settings ───────────────────────────────────────
+PROBATION_SECONDS = 86400   # 24 hours
+PROBATION_THRESHOLD = 1     # spam score threshold for new members
+NORMAL_THRESHOLD = 2        # spam score threshold for established members
 
 
 def _display_name(user) -> str:
@@ -31,13 +39,12 @@ def _display_name(user) -> str:
     return user.first_name or f"id:{user.id}"
 
 
-async def _is_telegram_admin(context: ContextTypes.DEFAULT_TYPE, chat_id: int, user_id: int) -> bool:
-    """Check if user_id is a Telegram admin/creator in chat_id."""
+async def _get_chat_member(context: ContextTypes.DEFAULT_TYPE, chat_id: int, user_id: int):
+    """Fetch ChatMember object, or None on failure."""
     try:
-        member = await context.bot.get_chat_member(chat_id, user_id)
-        return member.status in ("administrator", "creator")
+        return await context.bot.get_chat_member(chat_id, user_id)
     except Exception:
-        return False
+        return None
 
 
 async def on_group_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -63,19 +70,32 @@ async def on_group_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         await upsert_group(chat.id, chat.title or f"Chat {chat.id}", None)
         logger.info(f"Auto-registered group {chat.id} ({chat.title})")
 
+    # Fetch member info (reused for admin check + probation)
+    member = await _get_chat_member(context, chat.id, user.id)
+
     # Skip Telegram admins — they can't be auto-muted
-    if await _is_telegram_admin(context, chat.id, user.id):
+    if member and member.status in ("administrator", "creator"):
         return
+
+    # Determine probation status
+    joined_at = getattr(member, "date", None) if member else None
+    if joined_at is None:
+        is_new = False  # can't determine join date → treat as trusted
+    else:
+        is_new = (datetime.now(timezone.utc) - joined_at).total_seconds() < PROBATION_SECONDS
+
+    threshold = PROBATION_THRESHOLD if is_new else NORMAL_THRESHOLD
 
     text = msg.text or msg.caption or ""
     score, hits = await score_message(text, chat.id)
 
-    if score < 2:
+    if score < threshold:
         return
 
     # ── Spam detected ──────────────────────────────────────────
     hit_str = " + ".join(hits)
-    logger.info(f"Spam in {chat.id} from {user.id}: score={score}, hits={hits}")
+    status = "probation" if is_new else "established"
+    logger.info(f"Spam in {chat.id} from {user.id} ({status}): score={score}/{threshold}, hits={hits}")
 
     # Log to DB first (so we have a record even if actions fail)
     await log_spam(
