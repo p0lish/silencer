@@ -3,17 +3,19 @@ tests/test_rules.py — Tests for the built-in rules seeder.
 """
 
 import pytest
-from detection.rules import seed_builtin_rules
+from detection.rules import seed_builtin_rules, BUILTIN_PATTERNS
 from db.patterns import get_patterns_for_group
+
+EXPECTED_BUILTIN_COUNT = len(BUILTIN_PATTERNS)
 
 
 @pytest.mark.asyncio
 async def test_seed_inserts_builtin_rules(db):
-    """Seeder should insert all 11 built-in patterns as global rows."""
+    """Seeder should insert all built-in patterns as global rows."""
     await seed_builtin_rules()
     patterns = await get_patterns_for_group(12345)  # any chat_id
     builtin = [p for p in patterns if p["is_builtin"] == 1]
-    assert len(builtin) == 11
+    assert len(builtin) == EXPECTED_BUILTIN_COUNT
 
 
 @pytest.mark.asyncio
@@ -23,7 +25,7 @@ async def test_seed_idempotent(db):
     await seed_builtin_rules()
     patterns = await get_patterns_for_group(12345)
     builtin = [p for p in patterns if p["is_builtin"] == 1]
-    assert len(builtin) == 11
+    assert len(builtin) == EXPECTED_BUILTIN_COUNT
 
 
 @pytest.mark.asyncio
