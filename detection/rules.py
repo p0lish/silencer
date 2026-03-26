@@ -29,7 +29,7 @@ BUILTIN_PATTERNS = [
         1,
     ),
     (
-        r"\b(earn|make|earnings?)\s+\$\d+|\$\d+[\s\S]{0,15}per\s+(day|week|month|hour)",
+        r"\b(earn|make|earnings?)\s+[\$€£]\d+|[\$€£]\d+[\s\S]{0,15}per\s+(day|week|month|hour)",
         "investment scam",
         1,
     ),
@@ -49,7 +49,7 @@ BUILTIN_PATTERNS = [
         1,
     ),
     (
-        r"\b(part.?time|full.?time).{0,30}(earn|income|\$\d+)",
+        r"\b(part.?time|full.?time).{0,30}(earn|income|[\$€£]\d+)",
         "fake job",
         1,
     ),
@@ -66,6 +66,55 @@ BUILTIN_PATTERNS = [
     (
         r"https?:\/\/(?!t\.me\/)[a-z0-9-]+\.(xyz|top|click|ru|cn|tk|pw|cc|icu)",
         "suspicious domain",
+        1,
+    ),
+    # Multilingual fake job / income scam patterns
+    (
+        r"\b(lavoro da remoto|dal telefono|senza esperienza|nessuna esperienza|guadagn[oi])\b",
+        "fake job (IT)",
+        1,
+    ),
+    (
+        r"\b(távmunka|telefonról|tapasztalat nélkül|kereset|jövedelem|heti \d+|napi \d+)\b",
+        "fake job (HU)",
+        1,
+    ),
+    (
+        r"\b(Heimarbeit|vom Handy|keine Erfahrung|Verdienst|Einkommen)\b",
+        "fake job (DE)",
+        1,
+    ),
+    (
+        r"\b(trabajo remoto|desde el teléfono|sin experiencia|ganar|ingresos semanales)\b",
+        "fake job (ES)",
+        1,
+    ),
+    (
+        r"\b(travail à domicile|depuis.*téléphone|sans expérience|gagner|revenus? hebdomadaire)\b",
+        "fake job (FR)",
+        1,
+    ),
+    (
+        r"\b(удалённ|заработ|без опыта|доход|с телефона)\b",
+        "fake job (RU)",
+        1,
+    ),
+    # "DM me" / "write +" across languages
+    (
+        r"\b(scrivi|scrivimi|írj|schreib|écri[svt]|escrib[ea]|напиши)\s*[«»\"']?\+",
+        "DM recruit",
+        1,
+    ),
+    # Income amounts with € in any language
+    (
+        r"\d+\s*€\s*(settiman|hét|wöch|semain|semanal|в недел)",
+        "weekly income scam",
+        1,
+    ),
+    # "100% from phone" patterns
+    (
+        r"100\s*%\s*(dal|from|vom|du|с|desde)\s*(telefon|phone|handy|téléphone|celular)",
+        "phone job scam",
         1,
     ),
 ]
