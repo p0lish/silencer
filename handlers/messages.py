@@ -69,6 +69,7 @@ async def on_group_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     if group is None:
         await upsert_group(chat.id, chat.title or f"Chat {chat.id}", None)
         logger.info(f"Auto-registered group {chat.id} ({chat.title})")
+        group = await get_group(chat.id)
 
     # Fetch member info (reused for admin check + probation)
     member = await _get_chat_member(context, chat.id, user.id)
@@ -127,11 +128,12 @@ async def on_group_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             first_name=user.first_name,
             reason=hit_str,
         )
-        # Notify the group
-        await context.bot.send_message(
-            chat.id,
-            f"🚫 {_display_name(user)} muted for spam ({hit_str}).",
-        )
+        # Notify the group (unless silent mode is on)
+        if not (group and group.get("silent_mode")):
+            await context.bot.send_message(
+                chat.id,
+                f"🚫 {_display_name(user)} muted for spam ({hit_str}).",
+            )
     except Exception as e:
         logger.error(f"Could not mute user {user.id} in {chat.id}: {e}")
 

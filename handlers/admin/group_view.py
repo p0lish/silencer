@@ -11,7 +11,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes, CallbackQueryHandler
 
 from db.admins import is_group_admin, is_group_owner
-from db.groups import get_group
+from db.groups import get_group, toggle_silent_mode
 from db.muted import count_muted
 from db.spam_log import count_spam
 from db.patterns import count_custom_patterns
@@ -50,10 +50,14 @@ async def group_view_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     warning = "" if bot_is_admin else "\n\n⚠️ *Bot is not an admin* — promote it to enable spam deletion and muting."
 
+    silent = group.get("silent_mode", 0) if group else 0
+    silent_label = "🔔 Announcements: OFF — tap to enable" if silent else "🔕 Announcements: ON — tap to silence"
+
     buttons = [
         [InlineKeyboardButton(f"🔇 Muted users ({muted_count})", callback_data=f"muted:{chat_id}")],
         [InlineKeyboardButton(f"📋 Spam log ({spam_count})", callback_data=f"spamlog:{chat_id}")],
         [InlineKeyboardButton(f"🧩 Patterns ({pattern_count} custom)", callback_data=f"patterns:{chat_id}")],
+        [InlineKeyboardButton(silent_label, callback_data=f"silent:{chat_id}")],
     ]
     if owner:
         buttons.append([InlineKeyboardButton("👥 Manage admins", callback_data=f"admins:{chat_id}")])
@@ -75,6 +79,29 @@ async def group_view_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         logger.error(f"group_view_callback error: {e}")
 
 
+async def silent_toggle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Toggle silent mode for a group."""
+    query = update.callback_query
+
+    chat_id = int(context.matches[0].group(1))
+    user_id = update.effective_user.id
+
+    if not await is_group_admin(chat_id, user_id):
+        await query.answer("Not authorized", show_alert=True)
+        return
+
+    new_val = await toggle_silent_mode(chat_id)
+    status = "🔇 Silent mode ON" if new_val else "🔔 Announcements ON"
+    await query.answer(status, show_alert=False)
+    logger.info(f"Silent mode {'ON' if new_val else 'OFF'} for {chat_id} by {user_id}")
+
+    # Re-render the group view with updated state
+    # Re-use the match object pattern for group_view_callback
+    import re
+    context.matches[0] = re.match(r"^group:(-?\d+)$", f"group:{chat_id}")
+    await group_view_callback(update, context)
+
+
 async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Return to the main admin menu."""
     query = update.callback_query
@@ -84,4 +111,5 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
 def register_group_view_handlers(app) -> None:
     app.add_handler(CallbackQueryHandler(group_view_callback, pattern=r"^group:(-?\d+)$"))
+    app.add_handler(CallbackQueryHandler(silent_toggle_callback, pattern=r"^silent:(-?\d+)$"))
     app.add_handler(CallbackQueryHandler(menu_callback, pattern=r"^menu$"))

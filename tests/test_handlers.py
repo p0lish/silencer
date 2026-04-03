@@ -192,6 +192,62 @@ async def test_spam_message_group_notified(db):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# MESSAGE HANDLER — SILENT MODE
+# ══════════════════════════════════════════════════════════════════════════════
+
+@pytest.mark.asyncio
+async def test_silent_mode_skips_announcement(db):
+    """When silent_mode=1, bot should NOT send a notification in the group."""
+    msg = _message()
+    upd = _update(message=msg)
+    ctx = _context()
+
+    with patch("handlers.messages.score_message", return_value=(2, ["crypto scam", "long message"])), \
+         patch("handlers.messages.get_group", return_value={"chat_id": CHAT_ID, "silent_mode": 1}), \
+         patch("handlers.messages.log_spam", AsyncMock()), \
+         patch("handlers.messages.add_muted", AsyncMock()):
+        await on_group_message(upd, ctx)
+
+    # Message should still be deleted and user restricted
+    msg.delete.assert_called_once()
+    ctx.bot.restrict_chat_member.assert_called_once()
+    # But no announcement
+    ctx.bot.send_message.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_non_silent_mode_sends_announcement(db):
+    """When silent_mode=0, bot should send a notification in the group."""
+    msg = _message()
+    upd = _update(message=msg)
+    ctx = _context()
+
+    with patch("handlers.messages.score_message", return_value=(2, ["crypto scam", "long message"])), \
+         patch("handlers.messages.get_group", return_value={"chat_id": CHAT_ID, "silent_mode": 0}), \
+         patch("handlers.messages.log_spam", AsyncMock()), \
+         patch("handlers.messages.add_muted", AsyncMock()):
+        await on_group_message(upd, ctx)
+
+    ctx.bot.send_message.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_silent_mode_missing_key_sends_announcement(db):
+    """When silent_mode key is absent (old group), announcement should still be sent."""
+    msg = _message()
+    upd = _update(message=msg)
+    ctx = _context()
+
+    with patch("handlers.messages.score_message", return_value=(2, ["crypto scam", "long message"])), \
+         patch("handlers.messages.get_group", return_value={"chat_id": CHAT_ID}), \
+         patch("handlers.messages.log_spam", AsyncMock()), \
+         patch("handlers.messages.add_muted", AsyncMock()):
+        await on_group_message(upd, ctx)
+
+    ctx.bot.send_message.assert_called_once()
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # MESSAGE HANDLER — SHOULD NOT TRIGGER
 # ══════════════════════════════════════════════════════════════════════════════
 

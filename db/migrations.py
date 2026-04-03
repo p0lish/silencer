@@ -72,9 +72,10 @@ CREATE TABLE IF NOT EXISTS pending_state (
 
 # columns that may be missing from older DBs: (table, column, definition)
 _MIGRATIONS = [
-    ("groups",          "owner_id",   "INTEGER"),
-    ("custom_patterns", "is_builtin", "INTEGER DEFAULT 0"),
-    ("custom_patterns", "chat_id",    "INTEGER"),  # make nullable if old schema had NOT NULL
+    ("groups",          "owner_id",     "INTEGER"),
+    ("groups",          "silent_mode",  "INTEGER DEFAULT 0"),
+    ("custom_patterns", "is_builtin",   "INTEGER DEFAULT 0"),
+    ("custom_patterns", "chat_id",      "INTEGER"),  # make nullable if old schema had NOT NULL
 ]
 
 

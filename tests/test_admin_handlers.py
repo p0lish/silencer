@@ -10,7 +10,7 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock, patch, call
 
 from handlers.admin.menu import show_main_menu, start_command
-from handlers.admin.group_view import group_view_callback, menu_callback
+from handlers.admin.group_view import group_view_callback, menu_callback, silent_toggle_callback
 from handlers.admin.muted import muted_list_callback, unmute_callback, ban_callback, _ts_to_date, _user_label
 from handlers.admin.spam_log import spam_log_callback
 from handlers.admin.patterns import patterns_callback, addpat_callback, delpat_callback, pattern_input_handler
@@ -216,6 +216,62 @@ async def test_menu_callback_calls_show_main_menu(db):
     mock_menu.assert_called_once()
     _, call_kwargs = mock_menu.call_args[0], mock_menu.call_args[1] or {}
     assert mock_menu.call_args[1].get("edit", mock_menu.call_args[0][2] if len(mock_menu.call_args[0]) > 2 else None) is True
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# SILENT MODE TOGGLE
+# ══════════════════════════════════════════════════════════════════════════════
+
+@pytest.mark.asyncio
+async def test_silent_toggle_unauthorized(db):
+    """Non-admin should not be able to toggle silent mode."""
+    q = _query(user=_user(uid=USER_ID))
+    upd = _update(user=_user(uid=USER_ID), query=q)
+    ctx = _context(match_groups=(str(CHAT_ID),))
+
+    with patch("handlers.admin.group_view.is_group_admin", AsyncMock(return_value=False)):
+        await silent_toggle_callback(upd, ctx)
+
+    q.answer.assert_called_with("Not authorized", show_alert=True)
+    q.edit_message_text.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_silent_toggle_calls_toggle(db):
+    """Admin toggling silent should call toggle_silent_mode."""
+    q = _query(user=_user(uid=OWNER_ID))
+    upd = _update(user=_user(uid=OWNER_ID), query=q)
+    ctx = _context(match_groups=(str(CHAT_ID),))
+
+    with patch("handlers.admin.group_view.is_group_admin", AsyncMock(return_value=True)), \
+         patch("handlers.admin.group_view.toggle_silent_mode", AsyncMock(return_value=True)) as mock_toggle, \
+         patch("handlers.admin.group_view.get_group", AsyncMock(return_value={"chat_id": CHAT_ID, "title": "G", "silent_mode": 1})), \
+         patch("handlers.admin.group_view.count_muted", AsyncMock(return_value=0)), \
+         patch("handlers.admin.group_view.count_spam", AsyncMock(return_value=0)), \
+         patch("handlers.admin.group_view.count_custom_patterns", AsyncMock(return_value=0)), \
+         patch("handlers.admin.group_view.is_group_owner", AsyncMock(return_value=True)):
+        await silent_toggle_callback(upd, ctx)
+
+    mock_toggle.assert_called_once_with(CHAT_ID)
+
+
+@pytest.mark.asyncio
+async def test_group_view_shows_silent_toggle_button(db):
+    """Group view should include a silent mode toggle button."""
+    q = _query()
+    upd = _update(query=q)
+    ctx = _context(match_groups=(str(CHAT_ID),))
+
+    with patch("handlers.admin.group_view.is_group_admin", AsyncMock(return_value=True)), \
+         patch("handlers.admin.group_view.get_group", AsyncMock(return_value={"title": "G", "silent_mode": 0})), \
+         patch("handlers.admin.group_view.count_muted", AsyncMock(return_value=0)), \
+         patch("handlers.admin.group_view.count_spam", AsyncMock(return_value=0)), \
+         patch("handlers.admin.group_view.count_custom_patterns", AsyncMock(return_value=0)), \
+         patch("handlers.admin.group_view.is_group_owner", AsyncMock(return_value=False)):
+        await group_view_callback(upd, ctx)
+
+    keyboard_str = str(q.edit_message_text.call_args)
+    assert f"silent:{CHAT_ID}" in keyboard_str
 
 
 # ══════════════════════════════════════════════════════════════════════════════

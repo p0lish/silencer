@@ -20,10 +20,11 @@ os.environ.setdefault("BOT_TOKEN", "test:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
 # ── Schema (duplicated here so tests don't depend on migrations running) ──────
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS groups (
-    chat_id   INTEGER PRIMARY KEY,
-    title     TEXT,
-    owner_id  INTEGER,
-    added_at  INTEGER
+    chat_id      INTEGER PRIMARY KEY,
+    title        TEXT,
+    owner_id     INTEGER,
+    added_at     INTEGER,
+    silent_mode  INTEGER DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS group_admins (
     id        INTEGER PRIMARY KEY AUTOINCREMENT,

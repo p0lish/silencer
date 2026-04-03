@@ -10,7 +10,7 @@ import pytest
 import pytest_asyncio
 from unittest.mock import patch
 
-from db.groups import get_group, upsert_group, delete_group, get_admin_groups
+from db.groups import get_group, upsert_group, delete_group, get_admin_groups, toggle_silent_mode
 from db.admins import (
     is_group_admin, is_group_owner, get_group_admins,
     add_admin, remove_admin,
@@ -85,6 +85,35 @@ async def test_get_admin_groups_multiple(db):
     await add_admin(chat2, USER_ID, "testuser", "admin", None)
     groups = await get_admin_groups(USER_ID)
     assert len(groups) == 2
+
+
+@pytest.mark.asyncio
+async def test_toggle_silent_mode_on(db):
+    """toggle_silent_mode should switch from 0 to 1."""
+    await upsert_group(CHAT_ID, "Test Group", USER_ID)
+    result = await toggle_silent_mode(CHAT_ID)
+    assert result is True
+    group = await get_group(CHAT_ID)
+    assert group["silent_mode"] == 1
+
+
+@pytest.mark.asyncio
+async def test_toggle_silent_mode_off(db):
+    """toggle_silent_mode should switch from 1 back to 0."""
+    await upsert_group(CHAT_ID, "Test Group", USER_ID)
+    await toggle_silent_mode(CHAT_ID)  # on
+    result = await toggle_silent_mode(CHAT_ID)  # off
+    assert result is False
+    group = await get_group(CHAT_ID)
+    assert group["silent_mode"] == 0
+
+
+@pytest.mark.asyncio
+async def test_toggle_silent_mode_default(db):
+    """New group without silent_mode set should default to 0 (off)."""
+    await upsert_group(CHAT_ID, "Test Group", USER_ID)
+    group = await get_group(CHAT_ID)
+    assert group.get("silent_mode", 0) == 0
 
 
 # ── admins ────────────────────────────────────────────────────────────────────

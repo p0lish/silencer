@@ -32,6 +32,23 @@ async def delete_group(chat_id: int) -> None:
     await db.commit()
 
 
+async def toggle_silent_mode(chat_id: int) -> bool:
+    """Toggle silent_mode for a group. Returns the new value."""
+    db = await get_db()
+    async with db.execute(
+        "SELECT COALESCE(silent_mode, 0) as silent_mode FROM groups WHERE chat_id = ?",
+        (chat_id,),
+    ) as cur:
+        row = await cur.fetchone()
+    new_val = 0 if (row and row["silent_mode"]) else 1
+    await db.execute(
+        "UPDATE groups SET silent_mode = ? WHERE chat_id = ?",
+        (new_val, chat_id),
+    )
+    await db.commit()
+    return bool(new_val)
+
+
 async def get_admin_groups(user_id: int) -> list[dict]:
     """Return groups where user_id is in group_admins, including their role."""
     db = await get_db()
